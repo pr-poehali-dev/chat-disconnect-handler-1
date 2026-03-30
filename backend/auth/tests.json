@@ -1,0 +1,20 @@
+{
+  "tests": [
+    {
+      "name": "Register user",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "register", "name": "Test2", "email": "test_new_abc999@example.com", "password": "secret123"},
+      "expectedStatus": 200,
+      "bodyMatcher": "none"
+    },
+    {
+      "name": "Login with wrong password",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "login", "email": "noone@example.com", "password": "wrong"},
+      "expectedStatus": 401,
+      "bodyMatcher": "none"
+    }
+  ]
+}

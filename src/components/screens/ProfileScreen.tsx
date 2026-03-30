@@ -1,15 +1,22 @@
 import type { User, Chat } from "@/pages/Index";
 import Icon from "@/components/ui/icon";
+import { apiLogout } from "@/api";
 
 interface Props {
   me: User;
   chats: Chat[];
+  onLogout?: () => void;
 }
 
-export default function ProfileScreen({ me, chats }: Props) {
+export default function ProfileScreen({ me, chats, onLogout }: Props) {
   const totalSent = chats.flatMap((c) => c.messages).filter((m) => m.fromMe).length;
   const totalReceived = chats.flatMap((c) => c.messages).filter((m) => !m.fromMe).length;
   const onlineContacts = chats.filter((c) => c.user.online).length;
+
+  const handleLogout = async () => {
+    await apiLogout();
+    onLogout?.();
+  };
 
   return (
     <div className="flex flex-col h-[calc(100dvh-80px)] overflow-y-auto">
@@ -25,7 +32,7 @@ export default function ProfileScreen({ me, chats }: Props) {
             </div>
           </div>
           <h2 className="text-2xl font-black mt-2">{me.name}</h2>
-          <p className="text-muted-foreground/60 text-sm">alexey@example.com</p>
+          <p className="text-muted-foreground/60 text-sm">{(me as { email?: string }).email || ''}</p>
           <div className="flex items-center gap-1.5 mt-2">
             <div className="w-2 h-2 rounded-full bg-green-400" />
             <span className="text-xs text-green-400 font-semibold">Онлайн</span>
@@ -72,14 +79,15 @@ export default function ProfileScreen({ me, chats }: Props) {
 
         {/* Actions */}
         <div className="space-y-2 animate-fade-in stagger-3">
-          {[
-            { icon: "Edit3", label: "Редактировать профиль", color: "text-violet-400" },
-            { icon: "Bell", label: "Уведомления", color: "text-orange-400" },
-            { icon: "Lock", label: "Конфиденциальность", color: "text-blue-400" },
-            { icon: "LogOut", label: "Выйти", color: "text-red-400" },
-          ].map((a) => (
+          {([
+            { icon: "Edit3", label: "Редактировать профиль", color: "text-violet-400", action: undefined },
+            { icon: "Bell", label: "Уведомления", color: "text-orange-400", action: undefined },
+            { icon: "Lock", label: "Конфиденциальность", color: "text-blue-400", action: undefined },
+            { icon: "LogOut", label: "Выйти", color: "text-red-400", action: handleLogout },
+          ] as { icon: string; label: string; color: string; action?: () => void }[]).map((a) => (
             <button
               key={a.label}
+              onClick={a.action}
               className="w-full glass-card flex items-center justify-between px-4 py-3.5 rounded-2xl active:scale-[0.98] transition-transform"
             >
               <div className="flex items-center gap-3">

@@ -4,6 +4,7 @@ import Icon from "@/components/ui/icon";
 interface Props {
   chats: Chat[];
   onOpen: (id: string) => void;
+  loading?: boolean;
 }
 
 function timeLabel(date: Date): string {
@@ -25,7 +26,7 @@ const AVATAR_COLORS = [
   "from-green-500 to-teal-600",
 ];
 
-export default function ChatsScreen({ chats, onOpen }: Props) {
+export default function ChatsScreen({ chats, onOpen, loading }: Props) {
   const pinned = chats.filter((c) => c.isPinned);
   const others = chats.filter((c) => !c.isPinned);
   const sorted = [...pinned, ...others];
@@ -76,6 +77,21 @@ export default function ChatsScreen({ chats, onOpen }: Props) {
 
       {/* Chats list */}
       <div className="flex-1 overflow-y-auto">
+        {loading && (
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <div className="w-8 h-8 border-2 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
+            <p className="text-sm text-muted-foreground/50">Загружаем чаты...</p>
+          </div>
+        )}
+        {!loading && chats.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-16 gap-3 px-8 text-center">
+            <div className="w-16 h-16 rounded-3xl gradient-btn flex items-center justify-center mb-2 opacity-60">
+              <Icon name="MessageSquare" size={28} className="text-white" />
+            </div>
+            <p className="font-semibold text-foreground/70">Нет чатов</p>
+            <p className="text-sm text-muted-foreground/50">Найди друга в поиске, чтобы начать переписку</p>
+          </div>
+        )}
         {pinned.length > 0 && (
           <div className="px-5 mb-1">
             <div className="flex items-center gap-2 mb-2">

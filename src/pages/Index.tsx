@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import AuthScreen from "@/components/screens/AuthScreen";
 import ChatsScreen from "@/components/screens/ChatsScreen";
 import ChatScreen from "@/components/screens/ChatScreen";
@@ -6,6 +6,7 @@ import SearchScreen from "@/components/screens/SearchScreen";
 import ProfileScreen from "@/components/screens/ProfileScreen";
 import SettingsScreen from "@/components/screens/SettingsScreen";
 import BottomNav from "@/components/BottomNav";
+import { apiGetChats, apiGetMessages, apiSendMessage, type ApiChat, type ApiMessage } from "@/api";
 
 export type Screen = "chats" | "search" | "profile" | "settings";
 
@@ -35,124 +36,138 @@ export interface Chat {
   isPinned?: boolean;
 }
 
-const ME: User = {
-  id: "me",
-  name: "Алексей",
-  avatar: "А",
-  online: true,
-};
+function apiChatToChat(c: ApiChat): Chat {
+  return {
+    id: c.id,
+    user: {
+      id: c.user.id,
+      name: c.user.name,
+      avatar: c.user.avatar,
+      online: c.user.online,
+      lastSeen: c.user.lastSeen || undefined,
+    },
+    messages: c.lastMessage ? [{
+      id: c.id + '_last',
+      chatId: c.id,
+      fromMe: c.lastMessage.fromMe,
+      text: c.lastMessage.text,
+      time: new Date(c.lastMessage.time),
+      status: 'delivered',
+    }] : [],
+    unread: c.unread,
+    isPinned: c.isPinned,
+  };
+}
 
-const DEMO_CHATS: Chat[] = [
-  {
-    id: "1",
-    user: { id: "u1", name: "Мария Соколова", avatar: "М", online: true },
-    isPinned: true,
-    unread: 2,
-    messages: [
-      { id: "m1", chatId: "1", fromMe: false, text: "Привет! Как дела?", time: new Date(Date.now() - 3600000 * 2), status: "read" },
-      { id: "m2", chatId: "1", fromMe: true, text: "Всё отлично, спасибо! Работаю над новым проектом 🚀", time: new Date(Date.now() - 3600000 * 2 + 60000), status: "read" },
-      { id: "m3", chatId: "1", fromMe: false, text: "О, интересно! Расскажешь потом?", time: new Date(Date.now() - 3600000 * 1), status: "read" },
-      { id: "m4", chatId: "1", fromMe: false, text: "Кстати, ты смотрел последний эпизод?", time: new Date(Date.now() - 1800000), status: "delivered" },
-    ],
-  },
-  {
-    id: "2",
-    user: { id: "u2", name: "Дмитрий Волков", avatar: "Д", online: false, lastSeen: "был час назад" },
-    unread: 0,
-    messages: [
-      { id: "m5", chatId: "2", fromMe: true, text: "Дим, скинь файлы по проекту когда будет время", time: new Date(Date.now() - 3600000 * 5), status: "read" },
-      { id: "m6", chatId: "2", fromMe: false, text: "Да, уже скидываю на почту", time: new Date(Date.now() - 3600000 * 4), status: "read" },
-      { id: "m7", chatId: "2", fromMe: true, text: "Получил, спасибо 👍", time: new Date(Date.now() - 3600000 * 4 + 120000), status: "read" },
-    ],
-  },
-  {
-    id: "3",
-    user: { id: "u3", name: "Анна Белова", avatar: "А", online: true },
-    unread: 5,
-    messages: [
-      { id: "m8", chatId: "3", fromMe: false, text: "Встреча перенесена на пятницу", time: new Date(Date.now() - 3600000 * 24), status: "read" },
-      { id: "m9", chatId: "3", fromMe: false, text: "В 15:00 в том же месте", time: new Date(Date.now() - 3600000 * 24 + 30000), status: "read" },
-      { id: "m10", chatId: "3", fromMe: false, text: "Ты сможешь?", time: new Date(Date.now() - 3600000 * 3), status: "delivered" },
-      { id: "m11", chatId: "3", fromMe: false, text: "Напиши когда прочитаешь", time: new Date(Date.now() - 3600000 * 2), status: "delivered" },
-      { id: "m12", chatId: "3", fromMe: false, text: "Жду ответа!", time: new Date(Date.now() - 1200000), status: "delivered" },
-    ],
-  },
-  {
-    id: "4",
-    user: { id: "u4", name: "Иван Новиков", avatar: "И", online: false, lastSeen: "вчера" },
-    unread: 0,
-    messages: [
-      { id: "m13", chatId: "4", fromMe: false, text: "Привет, давно не виделись!", time: new Date(Date.now() - 3600000 * 48), status: "read" },
-      { id: "m14", chatId: "4", fromMe: true, text: "Да, надо как-нибудь встретиться", time: new Date(Date.now() - 3600000 * 47), status: "read" },
-    ],
-  },
-  {
-    id: "5",
-    user: { id: "u5", name: "Екатерина Лебедева", avatar: "Е", online: true },
-    unread: 1,
-    messages: [
-      { id: "m15", chatId: "5", fromMe: false, text: "Посмотри что я нашла 😍", time: new Date(Date.now() - 600000), status: "delivered" },
-    ],
-  },
-];
+function apiMsgToMsg(m: ApiMessage): ChatMessage {
+  return {
+    id: m.id,
+    chatId: m.chatId,
+    fromMe: m.fromMe,
+    text: m.text,
+    time: new Date(m.time),
+    status: m.status,
+  };
+}
 
 export default function Index() {
-  const [isAuth, setIsAuth] = useState(false);
+  const [token, setToken] = useState<string>(() => localStorage.getItem('token') || '');
+  const [me, setMe] = useState<User | null>(() => {
+    const stored = localStorage.getItem('user');
+    return stored ? JSON.parse(stored) : null;
+  });
   const [screen, setScreen] = useState<Screen>("chats");
-  const [chats, setChats] = useState<Chat[]>(DEMO_CHATS);
+  const [chats, setChats] = useState<Chat[]>([]);
   const [openChatId, setOpenChatId] = useState<string | null>(null);
+  const [loadingChats, setLoadingChats] = useState(false);
 
-  if (!isAuth) {
-    return <AuthScreen onAuth={() => setIsAuth(true)} />;
+  const loadChats = useCallback(async () => {
+    if (!token) return;
+    setLoadingChats(true);
+    try {
+      const apiChats = await apiGetChats();
+      setChats(apiChats.map(apiChatToChat));
+    } catch {
+      // ignore
+    } finally {
+      setLoadingChats(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (token) loadChats();
+  }, [token, loadChats]);
+
+  // Poll for new messages when chat is open
+  useEffect(() => {
+    if (!openChatId || !token) return;
+    const interval = setInterval(async () => {
+      try {
+        const msgs = await apiGetMessages(openChatId);
+        setChats(prev => prev.map(c => {
+          if (c.id !== openChatId) return c;
+          return { ...c, messages: msgs.map(apiMsgToMsg), unread: 0 };
+        }));
+      } catch { /* ignore */ }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [openChatId, token]);
+
+  // Poll chats list
+  useEffect(() => {
+    if (!token || openChatId) return;
+    const interval = setInterval(loadChats, 5000);
+    return () => clearInterval(interval);
+  }, [token, openChatId, loadChats]);
+
+  const handleAuth = (newToken: string, user: { id: string; name: string; avatar: string }) => {
+    localStorage.setItem('token', newToken);
+    localStorage.setItem('user', JSON.stringify({ ...user, online: true }));
+    setToken(newToken);
+    setMe({ ...user, online: true });
+  };
+
+  if (!token || !me) {
+    return <AuthScreen onAuth={handleAuth} />;
   }
 
   const openChat = chats.find((c) => c.id === openChatId);
 
-  const sendMessage = (chatId: string, text: string) => {
-    setChats((prev) =>
-      prev.map((c) => {
+  const openChatAndLoad = async (chatId: string) => {
+    setOpenChatId(chatId);
+    try {
+      const msgs = await apiGetMessages(chatId);
+      setChats(prev => prev.map(c => {
         if (c.id !== chatId) return c;
-        const newMsg: ChatMessage = {
-          id: Date.now().toString(),
-          chatId,
-          fromMe: true,
-          text,
-          time: new Date(),
-          status: "sent",
-        };
-        return { ...c, messages: [...c.messages, newMsg], unread: 0 };
-      })
-    );
-    // Simulate reply
-    setTimeout(() => {
-      setChats((prev) =>
-        prev.map((c) => {
-          if (c.id !== chatId) return c;
-          const replies = [
-            "Понял, спасибо!",
-            "Окей 👍",
-            "Хорошо, договорились",
-            "Отлично!",
-            "Буду иметь в виду",
-          ];
-          const reply: ChatMessage = {
-            id: (Date.now() + 1).toString(),
-            chatId,
-            fromMe: false,
-            text: replies[Math.floor(Math.random() * replies.length)],
-            time: new Date(),
-            status: "delivered",
-          };
-          return { ...c, messages: [...c.messages, reply] };
-        })
-      );
-    }, 1500 + Math.random() * 1000);
+        return { ...c, messages: msgs.map(apiMsgToMsg), unread: 0 };
+      }));
+    } catch { /* ignore */ }
   };
 
-  const markRead = (chatId: string) => {
-    setChats((prev) =>
-      prev.map((c) => (c.id === chatId ? { ...c, unread: 0 } : c))
-    );
+  const sendMessage = async (chatId: string, text: string) => {
+    const tempId = 'tmp_' + Date.now();
+    const tempMsg: ChatMessage = {
+      id: tempId,
+      chatId,
+      fromMe: true,
+      text,
+      time: new Date(),
+      status: 'sent',
+    };
+    setChats(prev => prev.map(c => c.id === chatId ? { ...c, messages: [...c.messages, tempMsg] } : c));
+
+    try {
+      const sent = await apiSendMessage(chatId, text);
+      setChats(prev => prev.map(c => {
+        if (c.id !== chatId) return c;
+        return {
+          ...c,
+          messages: c.messages.map(m => m.id === tempId ? apiMsgToMsg(sent) : m),
+        };
+      }));
+    } catch {
+      // keep temp message
+    }
   };
 
   if (openChatId && openChat) {
@@ -160,8 +175,8 @@ export default function Index() {
       <div className="mobile-screen bg-mesh font-golos">
         <ChatScreen
           chat={openChat}
-          me={ME}
-          onBack={() => setOpenChatId(null)}
+          me={me}
+          onBack={() => { setOpenChatId(null); loadChats(); }}
           onSend={(text) => sendMessage(openChatId, text)}
         />
       </div>
@@ -173,13 +188,14 @@ export default function Index() {
       {screen === "chats" && (
         <ChatsScreen
           chats={chats}
-          onOpen={(id) => { markRead(id); setOpenChatId(id); }}
+          loading={loadingChats && chats.length === 0}
+          onOpen={openChatAndLoad}
         />
       )}
       {screen === "search" && (
-        <SearchScreen chats={chats} onOpen={(id) => { markRead(id); setOpenChatId(id); }} />
+        <SearchScreen chats={chats} onOpen={openChatAndLoad} />
       )}
-      {screen === "profile" && <ProfileScreen me={ME} chats={chats} />}
+      {screen === "profile" && <ProfileScreen me={me} chats={chats} onLogout={() => { setToken(''); setMe(null); setChats([]); }} />}
       {screen === "settings" && <SettingsScreen />}
 
       <BottomNav current={screen} onChange={setScreen} totalUnread={chats.reduce((s, c) => s + c.unread, 0)} />
